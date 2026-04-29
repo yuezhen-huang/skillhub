@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package skill;
+
+option go_package = "github.com/skillhub/skill-hub/api/gen/skill";
+
+service Skill {
+  rpc Info(InfoRequest) returns (InfoResponse);
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message InfoRequest {}
+
+message InfoResponse {
+  string name = 1;
+  string version = 2;
+  string description = 3;
+}
+
+message ExecuteRequest {
+  string method = 1;
+  bytes payload = 2;
+  map<string, string> metadata = 3;
+}
+
+message ExecuteResponse {
+  bytes result = 1;
+  map<string, string> metadata = 2;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string message = 2;
+}

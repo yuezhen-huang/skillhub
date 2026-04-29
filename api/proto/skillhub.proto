@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package skillhub;
+
+option go_package = "github.com/skillhub/skill-hub/api/gen/skillhub";
+
+service SkillHub {
+  // Skill management
+  rpc AddSkill(AddSkillRequest) returns (AddSkillResponse);
+  rpc RemoveSkill(RemoveSkillRequest) returns (RemoveSkillResponse);
+  rpc GetSkill(GetSkillRequest) returns (GetSkillResponse);
+  rpc ListSkills(ListSkillsRequest) returns (ListSkillsResponse);
+
+  // Lifecycle control
+  rpc StartSkill(StartSkillRequest) returns (StartSkillResponse);
+  rpc StopSkill(StopSkillRequest) returns (StopSkillResponse);
+  rpc RestartSkill(RestartSkillRequest) returns (RestartSkillResponse);
+
+  // Version management
+  rpc SwitchVersion(SwitchVersionRequest) returns (SwitchVersionResponse);
+  rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
+  rpc PullLatest(PullLatestRequest) returns (PullLatestResponse);
+}
+
+message AddSkillRequest {
+  string name = 1;
+  string gitlab_url = 2;
+  string version_ref = 3;
+  map<string, string> config = 4;
+}
+
+message AddSkillResponse {
+  Skill skill = 1;
+}
+
+message RemoveSkillRequest {
+  string id = 1;
+}
+
+message RemoveSkillResponse {
+  bool success = 1;
+}
+
+message GetSkillRequest {
+  string id = 1;
+}
+
+message GetSkillResponse {
+  Skill skill = 1;
+}
+
+message ListSkillsRequest {}
+
+message ListSkillsResponse {
+  repeated Skill skills = 1;
+}
+
+message StartSkillRequest {
+  string id = 1;
+}
+
+message StartSkillResponse {
+  bool success = 1;
+}
+
+message StopSkillRequest {
+  string id = 1;
+}
+
+message StopSkillResponse {
+  bool success = 1;
+}
+
+message RestartSkillRequest {
+  string id = 1;
+}
+
+message RestartSkillResponse {
+  bool success = 1;
+}
+
+message SwitchVersionRequest {
+  string id = 1;
+  string version_ref = 2;
+}
+
+message SwitchVersionResponse {
+  bool success = 1;
+  string version = 2;
+}
+
+message ListVersionsRequest {
+  string id = 1;
+}
+
+message ListVersionsResponse {
+  repeated string tags = 1;
+  repeated string branches = 2;
+}
+
+message PullLatestRequest {
+  string id = 1;
+}
+
+message PullLatestResponse {
+  bool success = 1;
+  string commit = 2;
+}
+
+message Skill {
+  string id = 1;
+  string name = 2;
+  string version = 3;
+  string status = 4;
+  Repository repository = 5;
+  ProcessInfo process = 6;
+}
+
+message Repository {
+  string url = 1;
+  string branch = 2;
+  string tag = 3;
+  string commit = 4;
+}
+
+message ProcessInfo {
+  int32 pid = 1;
+  string rpc_address = 2;
+}
