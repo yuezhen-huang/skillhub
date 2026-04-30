@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 
-	"github.com/skillhub/skill-hub/internal/models"
+	"github.com/yuezhen-huang/skillhub/internal/models"
 )
 
 // Store defines the interface for skill persistence

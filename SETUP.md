@@ -15,9 +15,15 @@ brew install protobuf
 
 # Or download from https://github.com/protocolbuffers/protobuf/releases
 
-# Install Go plugins
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+# Install Go plugins (protoc Go generators)
+go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.35.1
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.0
+
+# Ensure GOPATH/bin is in PATH (required for make proto / make build)
+export PATH="$(go env GOPATH)/bin:$PATH"
+
+# Optional: persist it for zsh
+echo 'export PATH="$(go env GOPATH)/bin:$PATH"' >> ~/.zshrc
 ```
 
 ## Build Steps

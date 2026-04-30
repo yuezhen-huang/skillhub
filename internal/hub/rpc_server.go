@@ -6,8 +6,8 @@ import (
 	"net"
 	"sync"
 
-	"github.com/skillhub/skill-hub/api/gen/skillhub"
-	"github.com/skillhub/skill-hub/internal/models"
+	"github.com/yuezhen-huang/skillhub/api/gen/skillhub"
+	"github.com/yuezhen-huang/skillhub/internal/models"
 
 	"google.golang.org/grpc"
 )
@@ -199,6 +199,81 @@ func (s *RPCServer) PullLatest(ctx context.Context, req *skillhub.PullLatestRequ
 	return &skillhub.PullLatestResponse{
 		Success: true,
 		Commit:  commit,
+	}, nil
+}
+
+// ScanSkills implements the ScanSkills gRPC method
+func (s *RPCServer) ScanSkills(ctx context.Context, req *skillhub.ScanSkillsRequest) (*skillhub.ScanSkillsResponse, error) {
+	result, err := s.manager.ScanSkills(ctx, req.ImportAll)
+	if err != nil {
+		return nil, err
+	}
+
+	discovered := make([]*skillhub.DiscoveredSkill, len(result.Discovered))
+	for i, d := range result.Discovered {
+		discovered[i] = &skillhub.DiscoveredSkill{
+			Path:            d.Path,
+			Name:            d.Name,
+			Description:     d.Description,
+			DetectedVersion: d.DetectedVersion,
+			AlreadyImported: d.AlreadyImported,
+			IsValidSkill:    d.IsValidSkill,
+			ValidationError: d.ValidationError,
+		}
+	}
+
+	return &skillhub.ScanSkillsResponse{
+		Discovered:     discovered,
+		ImportedCount:  int32(result.ImportedCount),
+		SkippedCount:   int32(result.SkippedCount),
+	}, nil
+}
+
+// AlignAgents implements the AlignAgents gRPC method
+func (s *RPCServer) AlignAgents(ctx context.Context, req *skillhub.AlignAgentsRequest) (*skillhub.AlignAgentsResponse, error) {
+	result, err := s.manager.AlignAgents(ctx, req.AutoFix)
+	if err != nil {
+		return nil, err
+	}
+
+	issues := make([]*skillhub.AlignmentIssue, len(result.Issues))
+	for i, issue := range result.Issues {
+		issues[i] = &skillhub.AlignmentIssue{
+			SkillId:     issue.SkillID,
+			SkillName:   issue.SkillName,
+			IssueType:   string(issue.IssueType),
+			Description: issue.Description,
+			Severity:    string(issue.Severity),
+			Fixed:       issue.Fixed,
+		}
+	}
+
+	var report *skillhub.AlignReport
+	if result.Report != nil {
+		actions := make([]*skillhub.AlignAction, 0, len(result.Report.Actions))
+		for _, a := range result.Report.Actions {
+			if a == nil {
+				continue
+			}
+			actions = append(actions, &skillhub.AlignAction{
+				AgentDir:  a.AgentDir,
+				SkillName: a.SkillName,
+				Action:    a.Action,
+				Success:   a.Success,
+				Reason:    a.Reason,
+			})
+		}
+		report = &skillhub.AlignReport{
+			AgentDirs: result.Report.AgentDirs,
+			Actions:   actions,
+		}
+	}
+
+	return &skillhub.AlignAgentsResponse{
+		Issues:     issues,
+		FixedCount: int32(result.FixedCount),
+		AllHealthy: result.AllHealthy,
+		Report:     report,
 	}, nil
 }
 

@@ -6,7 +6,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/skillhub/skill-hub/api/gen/skill"
+	"github.com/yuezhen-huang/skillhub/api/gen/skill"
 
 	"google.golang.org/grpc"
 )

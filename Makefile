@@ -7,8 +7,8 @@ PROTOC ?= protoc
 
 proto:
 	mkdir -p api/gen
-	$(PROTOC) --go_out=api/gen --go_opt=paths=source_relative \
-		--go-grpc_out=api/gen --go-grpc_opt=paths=source_relative \
+	$(PROTOC) --go_out=. --go_opt=module=github.com/yuezhen-huang/skillhub \
+		--go-grpc_out=. --go-grpc_opt=module=github.com/yuezhen-huang/skillhub \
 		-I api/proto api/proto/*.proto
 
 build: proto

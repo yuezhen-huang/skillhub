@@ -1,0 +1,12 @@
+.DS_Store
+
+# Build outputs
+bin/
+log/
+.build/
+
+# Local config
+config.yaml
+
+# Local databases
+*.db

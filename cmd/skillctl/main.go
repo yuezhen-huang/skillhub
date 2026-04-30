@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 
-	"github.com/skillhub/skill-hub/api/gen/skillhub"
+	"github.com/yuezhen-huang/skillhub/api/gen/skillhub"
 
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
@@ -36,6 +37,8 @@ func main() {
 	rootCmd.AddCommand(switchCmd())
 	rootCmd.AddCommand(versionsCmd())
 	rootCmd.AddCommand(pullCmd())
+	rootCmd.AddCommand(scanCmd())
+	rootCmd.AddCommand(alignCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -73,8 +76,15 @@ func addCmd() *cobra.Command {
 
 			configMap := make(map[string]string)
 			for _, c := range configs {
-				// Parse key=value
-				// (simplified for now)
+				key, val, ok := strings.Cut(c, "=")
+				if !ok {
+					return fmt.Errorf("invalid --config %q, expected key=value", c)
+				}
+				key = strings.TrimSpace(key)
+				if key == "" {
+					return fmt.Errorf("invalid --config %q, empty key", c)
+				}
+				configMap[key] = val
 			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -417,4 +427,159 @@ func pullCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func scanCmd() *cobra.Command {
+	var importAll bool
+
+	cmd := &cobra.Command{
+		Use:   "scan",
+		Short: "Scan for existing skills in the skills directory",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, close, err := getClient()
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+
+			resp, err := client.ScanSkills(ctx, &skillhub.ScanSkillsRequest{
+				ImportAll: importAll,
+			})
+			if err != nil {
+				return err
+			}
+
+			if len(resp.Discovered) == 0 {
+				fmt.Println("No skills found in skills directory")
+				return nil
+			}
+
+			fmt.Printf("Found %d skills:\n", len(resp.Discovered))
+			fmt.Println()
+
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			fmt.Fprintln(w, "NAME\tSTATUS\tVERSION\tPATH\tREASON")
+			fmt.Fprintln(w, "────\t──────\t──────\t────\t──────")
+
+			for _, d := range resp.Discovered {
+				status := "importable"
+				reason := ""
+				if d.AlreadyImported {
+					status = "imported"
+				} else if !d.IsValidSkill {
+					status = "invalid"
+					reason = d.ValidationError
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", d.Name, status, d.DetectedVersion, d.Path, reason)
+			}
+			w.Flush()
+
+			fmt.Println()
+			if importAll {
+				fmt.Printf("Imported: %d, Skipped: %d\n", resp.ImportedCount, resp.SkippedCount)
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVarP(&importAll, "import", "i", false, "Automatically import all unimported skills")
+	return cmd
+}
+
+func alignCmd() *cobra.Command {
+	var autoFix bool
+
+	cmd := &cobra.Command{
+		Use:   "align",
+		Short: "Check agent health and alignment, optionally fix issues",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, close, err := getClient()
+			if err != nil {
+				return err
+			}
+			defer close()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+
+			resp, err := client.AlignAgents(ctx, &skillhub.AlignAgentsRequest{
+				AutoFix: autoFix,
+			})
+			if err != nil {
+				return err
+			}
+
+			if resp.AllHealthy && len(resp.Issues) == 0 {
+				fmt.Println("All agents are healthy and aligned!")
+				return nil
+			}
+
+			fmt.Printf("Found %d issues:\n", len(resp.Issues))
+			fmt.Println()
+
+			if len(resp.Issues) > 0 {
+				w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+				fmt.Fprintln(w, "SKILL\tSEVERITY\tTYPE\tDESCRIPTION\tSTATUS")
+				fmt.Fprintln(w, "─────\t────────\t────\t───────────\t──────")
+
+				for _, issue := range resp.Issues {
+					status := "needs fix"
+					if issue.Fixed {
+						status = "fixed"
+					}
+					fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+						issue.SkillName,
+						issue.Severity,
+						issue.IssueType,
+						issue.Description,
+						status,
+					)
+				}
+				w.Flush()
+
+				fmt.Println()
+			}
+
+			// Print execution report (directories detected + actions taken/skipped).
+			if resp.Report != nil {
+				if len(resp.Report.AgentDirs) > 0 {
+					fmt.Println("Detected agent dirs:")
+					for _, d := range resp.Report.AgentDirs {
+						fmt.Printf("  - %s\n", d)
+					}
+					fmt.Println()
+				}
+
+				if len(resp.Report.Actions) > 0 {
+					fmt.Println("Execution report:")
+					w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+					fmt.Fprintln(w, "AGENT_DIR\tSKILL\tACTION\tSUCCESS\tREASON")
+					fmt.Fprintln(w, "─────────\t─────\t──────\t───────\t──────")
+					for _, a := range resp.Report.Actions {
+						reason := a.Reason
+						fmt.Fprintf(w, "%s\t%s\t%s\t%t\t%s\n", a.AgentDir, a.SkillName, a.Action, a.Success, reason)
+					}
+					w.Flush()
+					fmt.Println()
+				}
+			}
+
+			if autoFix && resp.FixedCount > 0 {
+				fmt.Printf("Fixed %d issues\n", resp.FixedCount)
+			} else if autoFix {
+				fmt.Println("No issues could be automatically fixed")
+			} else {
+				fmt.Println("Run with --fix to attempt automatic fixes")
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVarP(&autoFix, "fix", "f", false, "Automatically fix issues where possible")
+	return cmd
 }

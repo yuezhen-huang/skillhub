@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package skill;
 
-option go_package = "github.com/skillhub/skill-hub/api/gen/skill";
+option go_package = "github.com/yuezhen-huang/skillhub/api/gen/skill";
 
 service Skill {
   rpc Info(InfoRequest) returns (InfoResponse);

@@ -7,12 +7,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/skillhub/skill-hub/internal/models"
+	"github.com/yuezhen-huang/skillhub/internal/models"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 )
 
@@ -24,6 +23,47 @@ type RepositoryManager struct {
 // NewRepositoryManager creates a new repository manager
 func NewRepositoryManager() *RepositoryManager {
 	return &RepositoryManager{}
+}
+
+// LoadFromPath loads repository info from an existing path
+func (r *RepositoryManager) LoadFromPath(ctx context.Context, path string) (*models.Repository, error) {
+	repo, err := git.PlainOpen(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open repo: %w", err)
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get head: %w", err)
+	}
+
+	remote, err := repo.Remote("origin")
+	var remoteURL string
+	if err == nil {
+		config := remote.Config()
+		if len(config.URLs) > 0 {
+			remoteURL = config.URLs[0]
+		}
+	}
+
+	var branch, tag string
+	refName := head.Name()
+	if refName.IsBranch() {
+		branch = refName.Short()
+	} else if refName.IsTag() {
+		tag = refName.Short()
+	}
+
+	now := time.Now()
+	return &models.Repository{
+		Path:     path,
+		URL:      remoteURL,
+		Remote:   "origin",
+		Branch:   branch,
+		Tag:      tag,
+		Commit:   head.Hash().String(),
+		LastPull: &now,
+	}, nil
 }
 
 // Clone clones a repository from GitLab
@@ -188,8 +228,14 @@ func (r *RepositoryManager) CheckoutTag(ctx context.Context, repo *models.Reposi
 	}
 
 	var hash plumbing.Hash
-	if ref.Target() != plumbing.ZeroHash {
-		hash = ref.Target()
+	if ref.Type() == plumbing.SymbolicReference {
+		// For symbolic references, we need to resolve recursively
+		targetRef, err := gitRepo.Reference(ref.Target(), true)
+		if err == nil {
+			hash = targetRef.Hash()
+		} else {
+			hash = ref.Hash()
+		}
 	} else {
 		hash = ref.Hash()
 	}
@@ -374,8 +420,12 @@ func (r *RepositoryManager) GetLatestTag(path string) (string, error) {
 		}
 
 		hash := ref.Hash()
-		if ref.Target() != plumbing.ZeroHash {
-			hash = ref.Target()
+		if ref.Type() == plumbing.SymbolicReference {
+			// For symbolic references, try to resolve them
+			targetRef, err := gitRepo.Reference(ref.Target(), true)
+			if err == nil {
+				hash = targetRef.Hash()
+			}
 		}
 
 		commit, err := gitRepo.CommitObject(hash)

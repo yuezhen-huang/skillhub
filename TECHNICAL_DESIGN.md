@@ -401,7 +401,7 @@ import (
     "os/signal"
     "syscall"
 
-    "github.com/skillhub/skill-hub/pkg/skillkit"
+    "github.com/yuezhen-huang/skillhub/pkg/skillkit"
 )
 
 type MySkill struct {

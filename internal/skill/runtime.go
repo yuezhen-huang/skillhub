@@ -8,11 +8,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
-	"github.com/skillhub/skill-hub/api/gen/skill"
-	"github.com/skillhub/skill-hub/internal/models"
-	"github.com/skillhub/skill-hub/pkg/config"
+	"github.com/yuezhen-huang/skillhub/api/gen/skill"
+	"github.com/yuezhen-huang/skillhub/internal/models"
+	"github.com/yuezhen-huang/skillhub/pkg/config"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -81,20 +82,40 @@ func (r *Runtime) Spawn(ctx context.Context, skillModel *models.Skill) (*models.
 
 // Kill stops a running skill process
 func (r *Runtime) Kill(ctx context.Context, skillModel *models.Skill) error {
+	// First try to stop tracked process (same daemon lifecycle).
+	var (
+		tracked *Process
+		ok      bool
+		pid     int
+		id      string
+	)
+
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	id = skillModel.ID
+	tracked, ok = r.processes[id]
+	// Capture persisted PID for daemon-restart scenarios (process map is empty).
+	if !ok && skillModel.Process != nil {
+		pid = skillModel.Process.PID
+	}
+	r.mu.Unlock()
 
-	process, ok := r.processes[skillModel.ID]
-	if !ok {
-		return fmt.Errorf("skill %s not found", skillModel.ID)
+	if ok {
+		if err := tracked.Stop(); err != nil {
+			return err
+		}
+		r.mu.Lock()
+		delete(r.processes, id)
+		r.mu.Unlock()
+		return nil
 	}
 
-	if err := process.Stop(); err != nil {
-		return err
+	// Fallback: daemon may have restarted, but storage still contains PID.
+	if pid <= 0 {
+		// Nothing to stop.
+		return nil
 	}
 
-	delete(r.processes, skillModel.ID)
-	return nil
+	return killPID(pid, 5*time.Second)
 }
 
 // HealthCheck checks if a skill is healthy
@@ -113,7 +134,7 @@ func (r *Runtime) HealthCheck(ctx context.Context, skillModel *models.Skill) (bo
 	}
 	defer client.Close()
 
-	resp, err := client.HealthCheck(ctx, &skill.HealthCheckRequest{})
+	resp, err := client.HealthCheck(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -281,7 +302,7 @@ func (p *Process) IsRunning() bool {
 	}
 
 	// Check if process is still alive
-	if err := p.cmd.Process.Signal(os.Signal(0)); err != nil {
+	if err := p.cmd.Process.Signal(syscall.Signal(0)); err != nil {
 		return false
 	}
 
@@ -396,4 +417,33 @@ func indexOf(s, substr string) int {
 		}
 	}
 	return -1
+}
+
+func isPIDAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	// On Unix systems, signal 0 checks for existence/permission.
+	return syscall.Kill(pid, syscall.Signal(0)) == nil
+}
+
+func killPID(pid int, timeout time.Duration) error {
+	if !isPIDAlive(pid) {
+		return nil
+	}
+
+	// Try graceful termination first.
+	_ = syscall.Kill(pid, syscall.SIGTERM)
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if !isPIDAlive(pid) {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Force kill.
+	_ = syscall.Kill(pid, syscall.SIGKILL)
+	return nil
 }

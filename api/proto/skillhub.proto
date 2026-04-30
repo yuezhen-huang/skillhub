@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package skillhub;
 
-option go_package = "github.com/skillhub/skill-hub/api/gen/skillhub";
+option go_package = "github.com/yuezhen-huang/skillhub/api/gen/skillhub";
 
 service SkillHub {
   // Skill management
@@ -20,6 +20,10 @@ service SkillHub {
   rpc SwitchVersion(SwitchVersionRequest) returns (SwitchVersionResponse);
   rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
   rpc PullLatest(PullLatestRequest) returns (PullLatestResponse);
+
+  // Scan and Align
+  rpc ScanSkills(ScanSkillsRequest) returns (ScanSkillsResponse);
+  rpc AlignAgents(AlignAgentsRequest) returns (AlignAgentsResponse);
 }
 
 message AddSkillRequest {
@@ -126,4 +130,57 @@ message Repository {
 message ProcessInfo {
   int32 pid = 1;
   string rpc_address = 2;
+}
+
+message ScanSkillsRequest {
+  bool import_all = 1;
+}
+
+message ScanSkillsResponse {
+  repeated DiscoveredSkill discovered = 1;
+  int32 imported_count = 2;
+  int32 skipped_count = 3;
+}
+
+message DiscoveredSkill {
+  string path = 1;
+  string name = 2;
+  string description = 3;
+  string detected_version = 4;
+  bool already_imported = 5;
+  bool is_valid_skill = 6;
+  string validation_error = 7;
+}
+
+message AlignAgentsRequest {
+  bool auto_fix = 1;
+}
+
+message AlignAgentsResponse {
+  repeated AlignmentIssue issues = 1;
+  int32 fixed_count = 2;
+  bool all_healthy = 3;
+  AlignReport report = 4;
+}
+
+message AlignmentIssue {
+  string skill_id = 1;
+  string skill_name = 2;
+  string issue_type = 3;
+  string description = 4;
+  string severity = 5;
+  bool fixed = 6;
+}
+
+message AlignReport {
+  repeated string agent_dirs = 1;
+  repeated AlignAction actions = 2;
+}
+
+message AlignAction {
+  string agent_dir = 1;
+  string skill_name = 2;
+  string action = 3; // e.g. "link_created", "skipped", "error"
+  bool success = 4;
+  string reason = 5;
 }

@@ -5,10 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/skillhub/skill-hub/internal/models"
+	"github.com/yuezhen-huang/skillhub/internal/models"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -45,6 +46,8 @@ func (s *SQLiteStore) initSchema() error {
 		name TEXT NOT NULL UNIQUE,
 		version TEXT,
 		description TEXT,
+		kind TEXT,
+		source_path TEXT,
 		status TEXT NOT NULL,
 		repository_json TEXT,
 		process_json TEXT,
@@ -53,8 +56,14 @@ func (s *SQLiteStore) initSchema() error {
 		updated_at DATETIME NOT NULL
 	);`
 
-	_, err := s.db.Exec(schema)
-	return err
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+
+	// Best-effort migrations for older databases (ignore errors if columns exist).
+	_, _ = s.db.Exec(`ALTER TABLE skills ADD COLUMN kind TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE skills ADD COLUMN source_path TEXT`)
+	return nil
 }
 
 // SaveSkill saves a skill to storage
@@ -82,9 +91,9 @@ func (s *SQLiteStore) SaveSkill(ctx context.Context, skill *models.Skill) error 
 
 	_, err = s.db.ExecContext(ctx, `
 		INSERT OR REPLACE INTO skills
-		(id, name, version, description, status, repository_json, process_json, config_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, skill.ID, skill.Name, skill.Version, skill.Description, skill.Status, repoJSON, processJSON, configJSON, skill.CreatedAt, skill.UpdatedAt)
+		(id, name, version, description, kind, source_path, status, repository_json, process_json, config_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, skill.ID, skill.Name, skill.Version, skill.Description, string(skill.Kind), skill.SourcePath, skill.Status, repoJSON, processJSON, configJSON, skill.CreatedAt, skill.UpdatedAt)
 
 	return err
 }
@@ -92,7 +101,7 @@ func (s *SQLiteStore) SaveSkill(ctx context.Context, skill *models.Skill) error 
 // GetSkill retrieves a skill by ID
 func (s *SQLiteStore) GetSkill(ctx context.Context, id string) (*models.Skill, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, name, version, description, status, repository_json, process_json, config_json, created_at, updated_at
+		SELECT id, name, version, description, kind, source_path, status, repository_json, process_json, config_json, created_at, updated_at
 		FROM skills WHERE id = ?
 	`, id)
 
@@ -102,7 +111,7 @@ func (s *SQLiteStore) GetSkill(ctx context.Context, id string) (*models.Skill, e
 // GetSkillByName retrieves a skill by name
 func (s *SQLiteStore) GetSkillByName(ctx context.Context, name string) (*models.Skill, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, name, version, description, status, repository_json, process_json, config_json, created_at, updated_at
+		SELECT id, name, version, description, kind, source_path, status, repository_json, process_json, config_json, created_at, updated_at
 		FROM skills WHERE name = ?
 	`, name)
 
@@ -112,7 +121,7 @@ func (s *SQLiteStore) GetSkillByName(ctx context.Context, name string) (*models.
 // ListSkills lists all skills
 func (s *SQLiteStore) ListSkills(ctx context.Context) ([]*models.Skill, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, version, description, status, repository_json, process_json, config_json, created_at, updated_at
+		SELECT id, name, version, description, kind, source_path, status, repository_json, process_json, config_json, created_at, updated_at
 		FROM skills ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -184,13 +193,15 @@ type scanner interface {
 func (s *SQLiteStore) scanSkill(sc scanner) (*models.Skill, error) {
 	var (
 		skill          models.Skill
+		kind           sql.NullString
+		sourcePath     sql.NullString
 		repoJSON       sql.NullString
 		processJSON    sql.NullString
 		configJSON     sql.NullString
 	)
 
 	err := sc.Scan(
-		&skill.ID, &skill.Name, &skill.Version, &skill.Description, &skill.Status,
+		&skill.ID, &skill.Name, &skill.Version, &skill.Description, &kind, &sourcePath, &skill.Status,
 		&repoJSON, &processJSON, &configJSON, &skill.CreatedAt, &skill.UpdatedAt,
 	)
 	if err != nil {
@@ -206,6 +217,17 @@ func (s *SQLiteStore) scanSkill(sc scanner) (*models.Skill, error) {
 			return nil, err
 		}
 		skill.Repository = &repo
+	}
+
+	if kind.Valid && kind.String != "" {
+		skill.Kind = models.SkillKind(kind.String)
+	} else {
+		// Backward-compatible default.
+		skill.Kind = models.SkillKindGo
+	}
+
+	if sourcePath.Valid {
+		skill.SourcePath = sourcePath.String
 	}
 
 	if processJSON.Valid {
@@ -229,5 +251,5 @@ func ensureDir(path string) error {
 	if path == "" || path == "." {
 		return nil
 	}
-	return nil
+	return os.MkdirAll(path, 0755)
 }

@@ -2,6 +2,16 @@ package models
 
 import "time"
 
+// SkillKind describes what a skill is and how it can run.
+type SkillKind string
+
+const (
+	// SkillKindGo indicates a runnable Go skill (git/go project, can be built and started).
+	SkillKindGo SkillKind = "go"
+	// SkillKindDoc indicates a documentation-only skill (e.g. a directory with SKILL.md).
+	SkillKindDoc SkillKind = "doc"
+)
+
 // SkillStatus represents the status of a skill
 type SkillStatus string
 
@@ -20,6 +30,8 @@ type Skill struct {
 	Name        string            `json:"name"`
 	Version     string            `json:"version"`
 	Description string            `json:"description"`
+	Kind        SkillKind          `json:"kind"`
+	SourcePath  string             `json:"source_path"`
 	Repository  *Repository       `json:"repository"`
 	Status      SkillStatus       `json:"status"`
 	Process     *ProcessInfo      `json:"process,omitempty"`

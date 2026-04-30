@@ -30,6 +30,7 @@ type StorageConfig struct {
 // SkillConfig holds skill runtime configuration
 type SkillConfig struct {
 	SkillsDir    string `mapstructure:"skills_dir"`
+	AgentDirs    []string `mapstructure:"agent_dirs"`
 	PortStart    int    `mapstructure:"port_start"`
 	PortEnd      int    `mapstructure:"port_end"`
 	BuildTimeout int    `mapstructure:"build_timeout"`
@@ -90,6 +91,7 @@ func Default() *Config {
 		},
 		Skill: SkillConfig{
 			SkillsDir:    filepath.Join(homeDir, ".skillhub", "skills"),
+			AgentDirs:    nil,
 			PortStart:    51000,
 			PortEnd:      52000,
 			BuildTimeout: 300,
@@ -109,6 +111,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("storage.type", "sqlite")
 	v.SetDefault("storage.path", filepath.Join(homeDir, ".skillhub", "skillhub.db"))
 	v.SetDefault("skill.skills_dir", filepath.Join(homeDir, ".skillhub", "skills"))
+	v.SetDefault("skill.agent_dirs", []string{})
 	v.SetDefault("skill.port_start", 51000)
 	v.SetDefault("skill.port_end", 52000)
 	v.SetDefault("skill.build_timeout", 300)
